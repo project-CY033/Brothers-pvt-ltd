@@ -207,33 +207,150 @@ CREATE TRIGGER on_auth_user_created
 # 2 Adding Notifications Column to Profiles Table
 ```sql
 
+-- Add notifications column to profiles table (if it doesn't exist)
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS notifications JSONB DEFAULT '{
+  "email_notifications": true,
+  "push_notifications": true,
+  "marketing_emails": false,
+  "security_alerts": true
+}'::jsonb;
+
+-- Add avatar_url column if it doesn't exist
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+
+-- Add bio column if it doesn't exist
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS bio TEXT;
+
+-- Add phone column if it doesn't exist
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS phone TEXT;
+
+-- Add location column if it doesn't exist
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS location TEXT;
+
+-- Add website column if it doesn't exist
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS website TEXT;
+
+-- Add theme_preference column if it doesn't exist
+ALTER TABLE profiles 
+ADD COLUMN IF NOT EXISTS theme_preference TEXT DEFAULT 'system';
+
+
+```
+
+
+# 3 Profiles Table
+- The profiles table stores extended user profile information and preferences.
+```sql
+
+CREATE TABLE public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name VARCHAR,
+  avatar_url TEXT,
+  bio TEXT,
+  theme VARCHAR DEFAULT 'dark',
+  language VARCHAR DEFAULT 'english',
+  notifications JSONB DEFAULT '{"email_notifications": true, "push_notifications": true, "marketing_emails": false, "security_alerts": true}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+
+```
+
+- ### If the notifications column in the profiles table is missing or has a different structure, you can update it with this SQL:
+```sql
+
+-- Add notifications column if missing
+ALTER TABLE public.profiles 
+ADD COLUMN IF NOT EXISTS notifications JSONB DEFAULT '{"email_notifications": true, "push_notifications": true, "marketing_emails": false, "security_alerts": true}'::jsonb;
+
+-- If the column already exists but you want to update its structure:
+UPDATE public.profiles
+SET notifications = '{"email_notifications": true, "push_notifications": true, "marketing_emails": false, "security_alerts": true}'::jsonb
+WHERE notifications IS NULL;
+
+```
+
+
+
+
+# 4 User Activities Table
+- The user_activities table tracks user actions for security and activity history.
+```sql
+CREATE TABLE public.user_activities (
+  id SERIAL PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  activity_type VARCHAR NOT NULL,
+  description TEXT,
+  ip_address VARCHAR,
+  user_agent VARCHAR,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
 
 
 
 ```
 
 
-# 3 
+# 5 Relationships
+- Each user in the auth.users table has one associated record in the profiles table
+-Each user can have many activities recorded in the user_activities table
+- Row Level Security Policies
+
+```sql
+
+-- Enable Row Level Security
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_activities ENABLE ROW LEVEL SECURITY;
+
+-- Create policies to allow users to read/write only their own data
+CREATE POLICY "Users can view their own profile"
+  ON public.profiles
+  FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile"
+  ON public.profiles
+  FOR UPDATE
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can view their own activities"
+  ON public.user_activities
+  FOR SELECT
+  USING (auth.uid() = user_id);
+
+```
+
+
+
+# 6 Database Functions and Triggers 
+```sql
+-- Create trigger to automatically create a profile for new users
+CREATE OR REPLACE FUNCTION public.create_profile_for_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id)
+  VALUES (NEW.id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.create_profile_for_user();
+
+```
+
+# 7
 ```sql
 
 
 
-
 ```
-
-
-
-# 4 
-```sql
-
-
-
-
-```
-
-
-
-
-
-
 
